@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wibio WebCard Test</title>
+  <link rel="stylesheet" href="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700">
+  <link rel="stylesheet" href="style.css">
+</head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-ZMNXYYFSNB"></script>
+<script src="https://cdn.jsdelivr.net/npm/spin@0.0.1/dist/spin.min.js"></script>
+
+<body class="mdc-typograpby" onload="listReaders()">
+  <div id="spinner-wrapper" class="spinner-wrapper"></div>
+  <div class="mdc-layout-grid">
+    <div class="mdc-layout-grid__inner">
+      <div class="mdc-layout-grid__cell--span-3"></div>
+      <div class="mdc-layout-grid__cell--span-6">
+        <!-- <div class="github-button">
+          <a class="github-button" href="https://github.com/cardid/webcard" data-size="large" data-show-count="true" aria-label="Star cardid/webcard on GitHub">Star</a>
+        </div> -->
+        <h1 class="mdc-typography--headline4">Wibio smart cards on the Web</h1>
+        <p>WebCard enables a Web page to use locally connected smart cards.
+          After you install the extension, click on a reader in the list to send some APDU commands to the card.
+        </p>
+        <p>The test below will try to send any hex sequences in a new line that begins with '> '</p>
+        <label class="mdc-text-field mdc-text-field--outlined mdc-text-field--textarea">
+          <textarea class="mdc-text-field__input webcard-apdu" aria-labelledby="my-label-id" rows="10" cols="80"
+            id="cardCommands">> SelectBeCard&#13;> ReadSequenceInfo&#13;> ReadOtpToken {OtpMode=$0}</textarea>
+            <!-- id="cardCommands">> ReadNfcToken</textarea> -->
+            <!-- id="cardCommands">> 00A4040000&#13;> FFCA000000</textarea> -->
+          <span class="mdc-notched-outline">
+            <span class="mdc-notched-outline__leading"></span>
+            <span class="mdc-notched-outline__notch">
+              <span class="mdc-floating-label" id="my-label-id">Test Commands</span>
+            </span>
+            <span class="mdc-notched-outline__trailing"></span>
+          </span>
+        </label>
+        <div>
+          <h3 class="mdc-typography--headline6">Available Readers</h3>
+          <ul class="mdc-deprecated-list mdc-deprecated-list--two-line" id="readerList">
+          </ul>
+        </div>
+      </div>
+      <div class="mdc-layout-grid__cell--span-3"></div>
+    </div>
+  </div>
+</body>
+<script src="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.js"></script>
+<script type="text/javascript" src="webcard.js"></script>
+<script async defer src="https://buttons.github.io/buttons.js"></script>
+<script type="text/javascript">
+  const baseUrl = 'https://smartmanager.wibiocard.com/api'
+  const channel = 'NFC'
+  let apiKey
+
+
+  new mdc.textField.MDCTextField(document.querySelector('.mdc-text-field'));
+  const list = new mdc.list.MDCList(document.querySelector('.mdc-deprecated-list'));
+  const listItemRipples = list.listElements.map((elmX) => new MDCRipple(elmX));
+
+  let _readers;
+  let _supportedCards;
+
+  let _target = document.getElementById('spinner-wrapper');
+  let _spinner = new Spinner({color:'#000', lines: 12}).spin();
+  _target.appendChild(_spinner.el);
+
+  //navigator.wibioWebcard.subscribeEvents([1, 2], () => listReaders());
+  navigator.wibioWebcard.cardInserted = function (reader) {
+    console.log('Card inserted in ' + reader.name);
+    listReaders();
+  }
+  navigator.wibioWebcard.cardRemoved = function (reader) {
+    console.log('Card removed from ' + reader.name);
+    listReaders();
+  }
+
+  async function listReaders() {
+    showSpinner()
+
+    try {
+      let reader_ul = document.getElementById('readerList');
+      while (reader_ul.firstChild) {
+        reader_ul.removeChild(reader_ul.firstChild);
+      }
+      apiKey = await navigator.wibioWebcard.apiKey();
+      if(!apiKey)
+        throw 'ApiKey not found';
+      _readers = await navigator.wibioWebcard.readers();
+      console.log(_readers.length + " readers detected");
+      _readers.forEach((reader, index) => {
+        let node = document.createElement('li');
+        reader_ul.append(node)
+        node.outerHTML = `
+        <li class="mdc-deprecated-list-item" tabindex="${index}" onclick="testWibioReader(${index})">
+          <span class="mdc-deprecated-list-item__ripple"></span>
+          <span class="mdc-deprecated-list-item__graphic material-icons" aria-hidden="true">payment</span>
+          <span class="mdc-deprecated-list-item__text">
+            <span class="mdc-deprecated-list-item__primary-text">${reader.name}</span>
+            <span class="mdc-deprecated-list-item__secondary-text">${reader.atr == "" ? "Empty" : "Card present - " + reader.atr}</span>
+          </span>
+        </li>
+        `;
+      });
+    } finally {
+      hideSpinner()
+    }
+  }
+
+  async function getSupportedCards(renew = false){
+    if(!renew && _supportedCards && _supportedCards.length){
+      return _supportedCards;
+    }
+    try {
+      const response = await fetch(`${baseUrl}/getSupportedCards`, {
+        method: 'GET',
+        headers: {
+          'X-Authorization': apiKey
+        }
+      });
+      const data = await response.json();
+      _supportedCards = [...(data.Cards || [])];
+      return _supportedCards;
+    } catch(err){
+      console.error(err);
+    }
+    throw 'No supported cards found'
+  }
+
+  async function checkCardByAtr(atr){
+    try {
+      const response = await fetch(`${baseUrl}/checkCardByAtr/${channel}/${atr}`, {
+        method: 'GET',
+        headers: {
+          'X-Authorization': apiKey
+        }
+      })
+      return await response.json()
+    } catch(err) {
+      console.error(err);
+    }
+    throw 'Check card by atr failed'
+  }
+
+  async function getCommand(cardId, commandName) {
+    try {
+      const response = await fetch(`${baseUrl}/getCommand/${cardId}/${channel}/${commandName}`, {
+        method: 'GET',
+        headers: {
+          'X-Authorization': apiKey
+        }
+      })
+      return await response.json()
+    } catch(err) {
+      console.log(err)
+    }
+    throw 'Command not found'
+  }
+
+  async function execOnReader(reader, commands) {
+    const atr = await reader.connect(true);
+    console.log('connected ' + atr);
+    try{
+      const results = []
+      if(!Array.isArray(commands))
+        commands = [commands]
+      for(const c of commands){
+        let startTime = new Date();
+        try {
+          const commandResult = await reader.transceive(c.command, c.params);
+          results.push({
+            result: commandResult,
+            status: 'ok',
+            name: c.name
+          })
+        } catch(err){
+          console.warn('Error during apdu execution', err)
+          results.push({
+            status: 'incomplete',
+            name: c.name
+          })
+        }
+        results[results.length - 1].elapsed = new Date() - startTime;
+      }
+      return results
+    } catch(_) {
+      return null
+    } finally {
+      reader.disconnect();
+    }
+  }
+
+  async function testWibioReader(index){
+    showSpinner();
+
+    try {
+      const cards = await getSupportedCards();
+      const reader = _readers[index];
+      let selectedCard = cards.find(c => c.Atr.replaceAll('-', '') == reader.atr);
+      if(!selectedCard){
+        //selectedCard = cards[0];
+        //console.warn('Card atr not found... assign first in supported cards for debugging...');
+        throw 'Card is not supported';
+      }
+  
+      let commands = [];
+      const check = await checkCardByAtr(selectedCard.Atr);
+      if(!check || !check.Id)
+        throw 'Card id not found';
+
+      let execResult = []
+      if(Array.isArray(check.Id) && check.Id.length > 1) {
+        if(!check.GetVersion)
+          throw 'Needed command GetVersion not found'
+        const idIdx = await execOnReader(reader, {
+          name: 'GetVersion',
+          command: check.GetVersion
+        })
+        check.Id = check.Id[idIdx[0].result.cmdIdx]
+      } else {
+        check.Id = check.Id[0]
+      }
+  
+      const commandsFromServer = await Promise
+        .allSettled([...document.getElementById('cardCommands').value.matchAll(/^> ([0-9A-Za-z $=_-\{\}]+)/gm)]
+          .filter(matches => !!matches[1])
+          .map(matches => {
+            const commandName = matches[1]
+            return new Promise((resolve, reject) => {
+              const splittedCommand = commandName.split(' ');
+              let params = null;
+              if(splittedCommand.length > 1){
+                params = splittedCommand.slice(1, splittedCommand.length)
+                  .reduce((aggr, curr) => {
+                    let keyVal = curr.replaceAll('{', '').replaceAll('}', '').split('=');
+                    if(keyVal.length == 2)
+                      aggr[keyVal[0]] = keyVal[1];
+                    return aggr;  
+                  }, {})
+              }
+    
+              getCommand(check.Id, splittedCommand[0])
+                .then(c => resolve({
+                  ...c,
+                  name: commandName,
+                  params: params
+                }))
+                .catch(err => reject(err))
+            });
+          }))
+      commandsFromServer
+        .filter(r => r.status == 'fulfilled')
+        .map(r => ({
+          name: r.value.name,
+          command: r.value.Response,
+          params: r.value.params
+        }))
+        .forEach(r => {
+          if(!commands.find(c => c.name == r.name))
+            commands.push(r)
+        })
+      
+      execResult = execResult.concat(await execOnReader(reader, commands))
+      
+      let output = 'Testing card in ' + reader.name + '\n';
+      if(execResult && Array.isArray(execResult)){
+        output += execResult.map(c => 
+          '> ' + c.name + '\n' +
+          '< ' + (c.status == 'ok' ? c.result.cmdRes : c.status) + '\n' +
+          '+ Command time: ' + c.elapsed + 'ms\n').join('');
+        output += '- Total time: ' + execResult.reduce((a, b) => a + (b?.elapsed ? b.elapsed : 0), 0) + 'ms\n'
+        document.getElementById('cardCommands').value = output;
+      } else {
+        output += '> Execution failed'
+      }
+
+    } finally {
+      hideSpinner();
+    }
+  }
+
+  function showSpinner(){
+    _target.style.display = 'block'
+  }
+
+  function hideSpinner(){
+    _target.style.display = 'none'
+  }
+  
+</script>
+</html>
