@@ -1,0 +1,40 @@
+html, body {
+  height: 100%;
+}
+
+body {
+  font-family: 'Roboto';
+  margin: 0;
+  padding-top: 0.1px;
+}
+
+textarea {
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: scroll;
+}
+
+.webcard-apdu {
+  font-family: 'Consolas', monospace;
+}
+
+.github-button {
+  display: flex;
+  justify-content: right;
+}
+
+.spinner-wrapper {
+  position: fixed;
+  z-index: 10;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: none;
+}
+
+.spinner-wrapper .spinner {
+  top: 50%;
+  left: 50%;
+}
